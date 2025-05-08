@@ -1,4 +1,5 @@
 import subprocess
+import winsound
 import time
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
@@ -85,13 +86,16 @@ def send_whatsapp_message(driver, contact, message, retries=3):
             message_box.click()
             message_box.send_keys(message + "\n")
             print(f"✅ Sent to {contact}: {message}")
+            winsound.Beep(1500, 300)  # Success sound
             return
 
         except Exception as e:
             print(f"❌ Attempt {attempt} failed to send message to {contact}: {e}")
             time.sleep(3)
 
-    # All retries failed — trigger browser reinit
+    # All retries failed — alert with sound
+    winsound.Beep(1000, 500)
+    winsound.Beep(800, 500)
     raise RuntimeError(f"All attempts to send message to {contact} failed.")
 
 # MAIN EXECUTION
