@@ -7,7 +7,7 @@ from selenium.webdriver.support import expected_conditions as EC
 
 # CONFIGURATION
 critical_ips = {
-    "10.109.13.8": "MIB SERVER",
+    "1.1.1.1": "MIB SERVER",
     "8.8.8.8": "Google DNS"
 }
 
@@ -59,58 +59,68 @@ def ping(ip, timeout=2):
         print(f"Error pinging {ip}: {e}")
         return False
 
-def send_whatsapp_message(driver, contact, message):
-    """ Send a WhatsApp message to a contact. """
-    try:
-        # Search for the contact
-        search_box = WebDriverWait(driver, 30).until(
-            EC.presence_of_element_located((By.XPATH, '//div[@contenteditable="true" and @role="textbox"]'))
-        )
-        search_box.click()
-        search_box.clear()
-        search_box.send_keys(contact)
-        time.sleep(2)  # Allow search results to update
+def send_whatsapp_message(driver, contact, message, retries=3):
+    """ Try to send a WhatsApp message. Retry if needed. """
+    for attempt in range(1, retries + 1):
+        try:
+            # Search for the contact
+            search_box = WebDriverWait(driver, 30).until(
+                EC.presence_of_element_located((By.XPATH, '//div[@contenteditable="true" and @role="textbox"]'))
+            )
+            search_box.click()
+            search_box.clear()
+            search_box.send_keys(contact)
+            time.sleep(2)
 
-        # Select the chat
-        chat = WebDriverWait(driver, 30).until(
-            EC.element_to_be_clickable((By.XPATH, f'//span[@title="{contact}"]'))
-        )
-        chat.click()
+            # Select the chat
+            chat = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, f'//span[@title="{contact}"]'))
+            )
+            chat.click()
 
-        # Type and send the message
-        message_box = WebDriverWait(driver, 30).until(
-            EC.presence_of_element_located((By.XPATH, '//div[@contenteditable="true" and @data-tab="10"]'))
-        )
-        message_box.click()
-        message_box.send_keys(message + "\n")
-        print(f"✅ Sent to {contact}: {message}")
+            # Type and send the message
+            message_box = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, '//div[@contenteditable="true" and @data-tab="10"]'))
+            )
+            message_box.click()
+            message_box.send_keys(message + "\n")
+            print(f"✅ Sent to {contact}: {message}")
+            return
 
-    except Exception as e:
-        print(f"❌ Failed to send message to {contact}: {e}")
+        except Exception as e:
+            print(f"❌ Attempt {attempt} failed to send message to {contact}: {e}")
+            time.sleep(3)
+
+    # All retries failed — trigger browser reinit
+    raise RuntimeError(f"All attempts to send message to {contact} failed.")
 
 # MAIN EXECUTION
 
 driver = setup_whatsapp()
 
 while True:
-    # Prepare down list
-    critical_down = []
+    try:
+        critical_down = []
 
-    # Check critical IPs
-    for ip, name in critical_ips.items():
-        is_alive = ping(ip)
-        if not is_alive:
-            if ip_status.get(ip) != "down":
-                critical_down.append(f"{name} ({ip})")
-                ip_status[ip] = "down"
-        else:
-            if ip_status.get(ip) == "down":
-                send_whatsapp_message(driver, critical_contact, f"✅ Critical Recovery: {name} ({ip}) is back online.")
-                ip_status[ip] = "up"
+        for ip, name in critical_ips.items():
+            is_alive = ping(ip)
+            if not is_alive:
+                if ip_status.get(ip) != "down":
+                    critical_down.append(f"{name} ({ip})")
+                    ip_status[ip] = "down"
+            else:
+                if ip_status.get(ip) == "down":
+                    send_whatsapp_message(driver, critical_contact, f"✅ Critical Recovery: {name} ({ip}) is back online.")
+                    ip_status[ip] = "up"
 
-    # Send grouped alerts if needed
-    if critical_down:
-        message = "[CRITICAL ALERT] ⚠️❗❌ The following are unreachable: " + ", ".join(critical_down) + " ❗❌⚠️"
-        send_whatsapp_message(driver, critical_contact, message)
+        if critical_down:
+            message = "[CRITICAL ALERT] ⚠️❗❌ The following are unreachable: " + ", ".join(critical_down) + " ❗❌⚠️"
+            send_whatsapp_message(driver, critical_contact, message)
 
-    time.sleep(check_interval)
+        time.sleep(check_interval)
+
+    except RuntimeError as err:
+        print(f"🔁 Reinitializing browser due to error: {err}")
+        driver.quit()
+        time.sleep(5)
+        driver = setup_whatsapp()
