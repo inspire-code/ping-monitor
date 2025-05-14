@@ -1,12 +1,4 @@
-import sys
-
-# ✅ Patch for PyInstaller's --noconsole mode
-if sys.stdin is None:
-    import io
-    sys.stdin = io.StringIO()
-
 import subprocess
-import winsound
 import time
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
@@ -20,25 +12,13 @@ critical_ips = {
 }
 
 critical_contact = "Mohd Ilham"
+
 check_interval = 10  # seconds
 chrome_profile_path = r"C:\PingMonitor\chrome_profile"
-
-# Sound files
-sound_alert_critical = "alert_critical.wav"
-sound_alert_recovery = "alert_recovery.wav"
-sound_alert_success = "alert_success.wav"
-sound_alert_failure = "alert_failure.wav"
 
 ip_status = {}
 
 # FUNCTIONS
-
-def play_sound(file):
-    """Play a .wav sound file asynchronously if it exists."""
-    try:
-        winsound.PlaySound(file, winsound.SND_FILENAME | winsound.SND_ASYNC)
-    except RuntimeError as e:
-        print(f"🔇 Could not play sound {file}: {e}")
 
 def setup_whatsapp():
     """ Launch Chrome and open WhatsApp Web with saved session. """
@@ -53,6 +33,7 @@ def setup_whatsapp():
     print("Opening WhatsApp Web...")
     driver.get("https://web.whatsapp.com/")
 
+    # Wait until WhatsApp Web is ready
     try:
         print("Waiting for WhatsApp Web to be ready...")
         WebDriverWait(driver, 60).until(
@@ -82,6 +63,7 @@ def send_whatsapp_message(driver, contact, message, retries=3):
     """ Try to send a WhatsApp message. Retry if needed. """
     for attempt in range(1, retries + 1):
         try:
+            # Search for the contact
             search_box = WebDriverWait(driver, 30).until(
                 EC.presence_of_element_located((By.XPATH, '//div[@contenteditable="true" and @role="textbox"]'))
             )
@@ -90,25 +72,26 @@ def send_whatsapp_message(driver, contact, message, retries=3):
             search_box.send_keys(contact)
             time.sleep(2)
 
+            # Select the chat
             chat = WebDriverWait(driver, 10).until(
                 EC.element_to_be_clickable((By.XPATH, f'//span[@title="{contact}"]'))
             )
             chat.click()
 
+            # Type and send the message
             message_box = WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located((By.XPATH, '//div[@contenteditable="true" and @data-tab="10"]'))
             )
             message_box.click()
             message_box.send_keys(message + "\n")
             print(f"✅ Sent to {contact}: {message}")
-            play_sound(sound_alert_success)
             return
 
         except Exception as e:
             print(f"❌ Attempt {attempt} failed to send message to {contact}: {e}")
             time.sleep(3)
 
-    play_sound(sound_alert_failure)
+    # All retries failed — trigger browser reinit
     raise RuntimeError(f"All attempts to send message to {contact} failed.")
 
 # MAIN EXECUTION
@@ -128,13 +111,11 @@ while True:
             else:
                 if ip_status.get(ip) == "down":
                     send_whatsapp_message(driver, critical_contact, f"✅ Critical Recovery: {name} ({ip}) is back online.")
-                    play_sound(sound_alert_recovery)
                     ip_status[ip] = "up"
 
         if critical_down:
             message = "[CRITICAL ALERT] ⚠️❗❌ The following are unreachable: " + ", ".join(critical_down) + " ❗❌⚠️"
             send_whatsapp_message(driver, critical_contact, message)
-            play_sound(sound_alert_critical)
 
         time.sleep(check_interval)
 
